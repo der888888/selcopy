@@ -118,3 +118,87 @@ export async function consumeAndSaveGeneration(params: {
     generation,
   };
 }
+
+export async function getGenerationById(id: string) {
+  if (isDemoMode()) {
+    const token = await getDemoToken();
+    if (!token) return null;
+    const { demoGetGeneration } = await import("./demo-store");
+    return demoGetGeneration(token, id);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data } = await supabase
+    .from("generations")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  return data;
+}
+
+export async function consumeAndUpdateGeneration(params: {
+  id: string;
+  result: GenerateResult;
+}) {
+  if (isDemoMode()) {
+    const { demoUpdateGenerationPartial } = await import("./demo-store");
+    return demoUpdateGenerationPartial({
+      token: (await getDemoToken())!,
+      id: params.id,
+      result: params.result,
+    });
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("로그인이 필요합니다.");
+
+  const admin = createAdminClient();
+  const { data: rawProfile, error } = await admin
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+  if (error || !rawProfile) throw new Error("프로필을 찾을 수 없습니다.");
+
+  const profile = normalizeProfile(rawProfile as Profile);
+  const kind = decideConsume(profile);
+  if (!kind) {
+    throw new Error("생성 한도가 부족합니다. 요금제 또는 크레딧을 구매하세요.");
+  }
+
+  const patch = applyConsume(profile, kind);
+  await admin.from("profiles").update(patch).eq("id", user.id);
+
+  const { data: generation, error: genError } = await admin
+    .from("generations")
+    .update({ result: params.result })
+    .eq("id", params.id)
+    .eq("user_id", user.id)
+    .select("*")
+    .single();
+
+  if (genError) throw new Error(genError.message);
+
+  const { data: updated } = await admin
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+
+  const nextProfile = normalizeProfile(updated as Profile);
+  return {
+    profile: nextProfile,
+    usage: getUsageSnapshot(nextProfile),
+    generation,
+  };
+}

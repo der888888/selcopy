@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AppNav } from "@/components/site-header";
-import type { GenerateResult, UsageSnapshot } from "@/lib/types";
 import Link from "next/link";
+import { AppNav } from "@/components/site-header";
+import { ResultPanel } from "@/components/result-panel";
+import { PLATFORM_TEMPLATES } from "@/lib/platforms";
+import type { GenerateResult, Platform, UsageSnapshot } from "@/lib/types";
 
 export default function GeneratePage() {
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
   const [email, setEmail] = useState<string | null>(null);
-  const [platform, setPlatform] = useState<"smartstore" | "coupang">("smartstore");
+  const [platform, setPlatform] = useState<Platform>("smartstore");
   const [productName, setProductName] = useState("");
   const [category, setCategory] = useState("");
   const [keywords, setKeywords] = useState("");
@@ -16,9 +18,12 @@ export default function GeneratePage() {
   const [imageNote, setImageNote] = useState("");
   const [brandTone, setBrandTone] = useState("");
   const [result, setResult] = useState<GenerateResult | null>(null);
+  const [generationId, setGenerationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState("");
+
+  const tpl = PLATFORM_TEMPLATES[platform];
 
   useEffect(() => {
     (async () => {
@@ -55,6 +60,7 @@ export default function GeneratePage() {
           sellingPoints,
           imageNote,
           brandTone,
+          mode: "full",
         }),
       });
       const data = await res.json();
@@ -65,11 +71,43 @@ export default function GeneratePage() {
         throw new Error(data.error || "생성 실패");
       }
       setResult(data.result);
+      setGenerationId(data.generationId);
       setUsage(data.usage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "오류");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onRegenerateAds() {
+    if (!generationId) return;
+    setRegenerating(true);
+    setError("");
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform,
+          productName,
+          category,
+          keywords,
+          sellingPoints,
+          imageNote,
+          brandTone,
+          mode: "ads_keywords",
+          generationId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "재생성 실패");
+      setResult(data.result);
+      setUsage(data.usage);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "오류");
+    } finally {
+      setRegenerating(false);
     }
   }
 
@@ -79,23 +117,6 @@ export default function GeneratePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ brandTone }),
     });
-  }
-
-  async function copyText(label: string, text: string) {
-    await navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(""), 1500);
-  }
-
-  function downloadHtml() {
-    if (!result) return;
-    const blob = new Blob([result.detailHtml], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${productName || "detail"}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   return (
@@ -108,11 +129,15 @@ export default function GeneratePage() {
             <label>플랫폼</label>
             <select
               value={platform}
-              onChange={(e) => setPlatform(e.target.value as "smartstore" | "coupang")}
+              onChange={(e) => setPlatform(e.target.value as Platform)}
             >
               <option value="smartstore">스마트스토어</option>
               <option value="coupang">쿠팡</option>
             </select>
+            <p className="text-xs text-[var(--ink-soft)]">
+              {tpl.label} · 상품명 약 {tpl.titleMaxLen}자 · 광고 약 {tpl.adMaxLen}자 ·{" "}
+              {tpl.detailSections.slice(0, 3).join(" / ")}…
+            </p>
           </div>
           <div className="field">
             <label>상품명</label>
@@ -179,72 +204,21 @@ export default function GeneratePage() {
         </form>
 
         <section className="card p-6">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="display text-2xl font-bold">결과</h2>
-            {result && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="btn btn-ghost !py-2 !px-3 text-sm"
-                  onClick={() => copyText("md", result.detailMarkdown)}
-                >
-                  {copied === "md" ? "복사됨" : "본문 복사"}
-                </button>
-                <button
-                  className="btn btn-ghost !py-2 !px-3 text-sm"
-                  onClick={downloadHtml}
-                >
-                  HTML 다운로드
-                </button>
-              </div>
-            )}
-          </div>
-
+          <h2 className="display mb-4 text-2xl font-bold">고정 결과 세트</h2>
           {!result ? (
-            <p className="text-[var(--ink-soft)]">아직 생성된 결과가 없습니다.</p>
+            <p className="text-[var(--ink-soft)]">
+              상세 · 상품명 · 광고 · 옵션 · 키워드가 칸에 맞춰 나옵니다.
+            </p>
           ) : (
-            <div className="space-y-6">
-              <Block title="상세 본문">
-                <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-[#f7f4ee] p-4 text-sm">
-                  {result.detailMarkdown}
-                </pre>
-              </Block>
-              <Block title="광고 문구">
-                <ul className="space-y-2">
-                  {result.adCopies.map((c) => (
-                    <li
-                      key={c}
-                      className="flex items-start justify-between gap-3 rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-sm"
-                    >
-                      <span>{c}</span>
-                      <button
-                        className="shrink-0 text-xs font-bold text-[var(--accent)]"
-                        onClick={() => copyText(c, c)}
-                      >
-                        복사
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </Block>
-              <Block title="옵션명">
-                <p className="text-sm">{result.optionNames.join(" · ")}</p>
-              </Block>
-              <Block title="검색 키워드">
-                <p className="text-sm">{result.searchKeywords.join(", ")}</p>
-              </Block>
-            </div>
+            <ResultPanel
+              result={result}
+              productName={productName}
+              onRegenerateAds={generationId ? onRegenerateAds : undefined}
+              regenerating={regenerating}
+            />
           )}
         </section>
       </div>
     </main>
-  );
-}
-
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="mb-2 text-sm font-bold text-[var(--accent)]">{title}</h3>
-      {children}
-    </div>
   );
 }

@@ -2,6 +2,8 @@ import type { PlanId } from "./plans";
 
 export type Platform = "smartstore" | "coupang";
 
+export type GenerateMode = "full" | "ads_keywords";
+
 export type GenerateInput = {
   platform: Platform;
   productName: string;
@@ -12,12 +14,21 @@ export type GenerateInput = {
   brandTone?: string;
 };
 
+export type ComplianceIssue = {
+  term: string;
+  severity: "warn" | "high";
+  suggestion: string;
+  locations: string[];
+};
+
 export type GenerateResult = {
   detailMarkdown: string;
   detailHtml: string;
+  titleCandidates: string[];
   adCopies: string[];
   optionNames: string[];
   searchKeywords: string[];
+  compliance: ComplianceIssue[];
   watermarked: boolean;
 };
 

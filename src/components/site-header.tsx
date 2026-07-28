@@ -44,6 +44,9 @@ export function AppNav({
             <Link href="/generate" className="rounded-full px-3 py-2 hover:bg-white/70">
               생성
             </Link>
+            <Link href="/bulk" className="rounded-full px-3 py-2 hover:bg-white/70">
+              대량
+            </Link>
             <Link href="/history" className="rounded-full px-3 py-2 hover:bg-white/70">
               이력
             </Link>

@@ -2,40 +2,78 @@
 
 import { useEffect, useState } from "react";
 import { AppNav } from "@/components/site-header";
+import { ResultPanel } from "@/components/result-panel";
 import type { GenerationRow, UsageSnapshot } from "@/lib/types";
 
 export default function HistoryPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
   const [items, setItems] = useState<GenerationRow[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  async function load() {
+    const res = await fetch("/api/me");
+    if (res.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
+    const data = await res.json();
+    setEmail(data.profile?.email ?? null);
+    setUsage(data.usage);
+    setItems(data.generations || []);
+  }
 
   useEffect(() => {
-    (async () => {
-      const res = await fetch("/api/me");
-      if (res.status === 401) {
-        window.location.href = "/login";
-        return;
-      }
-      const data = await res.json();
-      setEmail(data.profile?.email ?? null);
-      setUsage(data.usage);
-      setItems(data.generations || []);
-    })();
+    load();
   }, []);
+
+  async function regenerateAds(item: GenerationRow) {
+    setRegeneratingId(item.id);
+    setError("");
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: item.platform,
+          productName: item.product_name,
+          category: item.category || "",
+          keywords: item.keywords || "",
+          sellingPoints: item.selling_points || "",
+          mode: "ads_keywords",
+          generationId: item.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "재생성 실패");
+      setItems((prev) =>
+        prev.map((row) =>
+          row.id === item.id ? { ...row, result: data.result } : row,
+        ),
+      );
+      setUsage(data.usage);
+      setOpenId(item.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "오류");
+    } finally {
+      setRegeneratingId(null);
+    }
+  }
 
   return (
     <main>
       <AppNav
         email={email}
-        usageLabel={
-          usage
-            ? `${usage.plan} · 크레딧 ${usage.credits}`
-            : undefined
-        }
+        usageLabel={usage ? `${usage.plan} · 크레딧 ${usage.credits}` : undefined}
       />
       <section className="container py-8">
         <h1 className="display text-3xl font-extrabold">생성 이력</h1>
-        <p className="mt-2 text-[var(--ink-soft)]">최근 생성 결과 50건까지 보관됩니다.</p>
+        <p className="mt-2 text-[var(--ink-soft)]">
+          상품별로 열어보고, 상세는 두고 광고·키워드만 다시 뽑을 수 있습니다.
+        </p>
+        {error && <p className="mt-3 text-sm text-[var(--danger)]">{error}</p>}
 
         <div className="mt-6 grid gap-4">
           {items.length === 0 && (
@@ -50,12 +88,43 @@ export default function HistoryPage() {
                 </span>
               </div>
               <p className="mt-1 text-sm text-[var(--ink-soft)]">
-                {item.platform} · {item.category || "카테고리 없음"}
+                {item.platform === "coupang" ? "쿠팡" : "스마트스토어"} ·{" "}
+                {item.category || "카테고리 없음"}
                 {item.is_free ? " · 무료" : ""}
               </p>
-              <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-[#f7f4ee] p-3 text-sm">
-                {item.result?.detailMarkdown}
-              </pre>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  className="btn btn-ghost !px-3 !py-1.5 text-sm"
+                  onClick={() =>
+                    setOpenId((id) => (id === item.id ? null : item.id))
+                  }
+                >
+                  {openId === item.id ? "접기" : "결과 보기"}
+                </button>
+                <button
+                  className="btn btn-accent !px-3 !py-1.5 text-sm"
+                  disabled={regeneratingId === item.id || !usage?.canGenerate}
+                  onClick={() => regenerateAds(item)}
+                >
+                  {regeneratingId === item.id
+                    ? "재생성 중…"
+                    : "광고·키워드만 다시"}
+                </button>
+              </div>
+              {openId === item.id && item.result && (
+                <div className="mt-4 border-t border-[var(--line)] pt-4">
+                  <ResultPanel
+                    result={{
+                      ...item.result,
+                      titleCandidates: item.result.titleCandidates || [],
+                      compliance: item.result.compliance || [],
+                    }}
+                    productName={item.product_name}
+                    onRegenerateAds={() => regenerateAds(item)}
+                    regenerating={regeneratingId === item.id}
+                  />
+                </div>
+              )}
             </article>
           ))}
         </div>

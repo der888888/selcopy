@@ -202,3 +202,46 @@ export async function demoUsage(token: string) {
   if (!profile) return null;
   return { profile, usage: getUsageSnapshot(profile) };
 }
+
+export async function demoGetGeneration(token: string, id: string) {
+  const store = await readStore();
+  const userId = store.sessions[token];
+  if (!userId) return null;
+  return (
+    store.generations.find((g) => g.id === id && g.user_id === userId) || null
+  );
+}
+
+export async function demoUpdateGenerationPartial(params: {
+  token: string;
+  id: string;
+  result: GenerateResult;
+}) {
+  const store = await readStore();
+  const userId = store.sessions[params.token];
+  if (!userId || !store.profiles[userId]) throw new Error("로그인이 필요합니다.");
+
+  const profile = normalizeProfile(store.profiles[userId]);
+  const kind = decideConsume(profile);
+  if (!kind) {
+    throw new Error("생성 한도가 부족합니다. 요금제 또는 크레딧을 구매하세요.");
+  }
+
+  const idx = store.generations.findIndex(
+    (g) => g.id === params.id && g.user_id === userId,
+  );
+  if (idx < 0) throw new Error("이력을 찾을 수 없습니다.");
+
+  store.profiles[userId] = { ...profile, ...applyConsume(profile, kind) };
+  store.generations[idx] = {
+    ...store.generations[idx],
+    result: params.result,
+  };
+  await writeStore(store);
+
+  return {
+    profile: normalizeProfile(store.profiles[userId]),
+    usage: getUsageSnapshot(store.profiles[userId]),
+    generation: store.generations[idx],
+  };
+}

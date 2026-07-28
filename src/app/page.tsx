@@ -63,11 +63,13 @@ export default function HomePage() {
         <p className="mt-3 max-w-2xl text-[var(--ink-soft)]">
           만능 챗봇이 아니라, 셀러가 매일 반복하는 카피 작업만 빠르게 끝냅니다.
         </p>
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
-            ["상세페이지 초안", "마크다운·HTML로 바로 붙여넣기"],
-            ["광고 문구 10개", "숏폼·파워클릭·상품명 후보"],
-            ["옵션·검색 키워드", "옵션명과 검색 키워드 제안"],
+            ["고정 결과 세트", "상세·상품명·광고·옵션·키워드 칸이 정해짐"],
+            ["스토어/쿠팡 템플릿", "플랫폼별 길이·톤·구성 기본값"],
+            ["광고만 다시", "상세는 두고 광고·키워드만 재생성"],
+            ["금지어 검수", "최고/완치/100% 등 경고·순화"],
+            ["CSV 대량 생성", "상품 여러 개를 한 번에, 결과 다운로드"],
           ].map(([title, desc]) => (
             <div key={title} className="rounded-[18px] border border-[var(--line)] bg-white/70 p-5">
               <h3 className="display text-xl font-bold">{title}</h3>
