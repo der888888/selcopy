@@ -3,13 +3,20 @@
 import { useEffect, useState } from "react";
 import { AppNav } from "@/components/site-header";
 import { ResultPanel } from "@/components/result-panel";
-import type { GenerationRow, UsageSnapshot } from "@/lib/types";
+import type {
+  GenerateMode,
+  GenerationRow,
+  UsageSnapshot,
+} from "@/lib/types";
 
 export default function HistoryPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
   const [items, setItems] = useState<GenerationRow[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [regeneratingMode, setRegeneratingMode] = useState<GenerateMode | null>(
+    null,
+  );
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -29,8 +36,12 @@ export default function HistoryPage() {
     load();
   }, []);
 
-  async function regenerateAds(item: GenerationRow) {
+  async function regenerate(
+    item: GenerationRow,
+    mode: Exclude<GenerateMode, "full">,
+  ) {
     setRegeneratingId(item.id);
+    setRegeneratingMode(mode);
     setError("");
     try {
       const res = await fetch("/api/generate", {
@@ -42,7 +53,7 @@ export default function HistoryPage() {
           category: item.category || "",
           keywords: item.keywords || "",
           sellingPoints: item.selling_points || "",
-          mode: "ads_keywords",
+          mode,
           generationId: item.id,
         }),
       });
@@ -59,6 +70,7 @@ export default function HistoryPage() {
       setError(err instanceof Error ? err.message : "오류");
     } finally {
       setRegeneratingId(null);
+      setRegeneratingMode(null);
     }
   }
 
@@ -71,7 +83,7 @@ export default function HistoryPage() {
       <section className="container py-8">
         <h1 className="display text-3xl font-extrabold">생성 이력</h1>
         <p className="mt-2 text-[var(--ink-soft)]">
-          상품별로 열어보고, 상세는 두고 광고·키워드만 다시 뽑을 수 있습니다.
+          상세는 두고 상품명 / 광고 / 키워드만 따로 다시 뽑을 수 있습니다.
         </p>
         {error && <p className="mt-3 text-sm text-[var(--danger)]">{error}</p>}
 
@@ -102,13 +114,25 @@ export default function HistoryPage() {
                   {openId === item.id ? "접기" : "결과 보기"}
                 </button>
                 <button
+                  className="btn btn-ghost !px-3 !py-1.5 text-sm"
+                  disabled={regeneratingId === item.id || !usage?.canGenerate}
+                  onClick={() => regenerate(item, "titles")}
+                >
+                  상품명만
+                </button>
+                <button
+                  className="btn btn-ghost !px-3 !py-1.5 text-sm"
+                  disabled={regeneratingId === item.id || !usage?.canGenerate}
+                  onClick={() => regenerate(item, "ads")}
+                >
+                  광고만
+                </button>
+                <button
                   className="btn btn-accent !px-3 !py-1.5 text-sm"
                   disabled={regeneratingId === item.id || !usage?.canGenerate}
-                  onClick={() => regenerateAds(item)}
+                  onClick={() => regenerate(item, "keywords")}
                 >
-                  {regeneratingId === item.id
-                    ? "재생성 중…"
-                    : "광고·키워드만 다시"}
+                  키워드만
                 </button>
               </div>
               {openId === item.id && item.result && (
@@ -120,8 +144,19 @@ export default function HistoryPage() {
                       compliance: item.result.compliance || [],
                     }}
                     productName={item.product_name}
-                    onRegenerateAds={() => regenerateAds(item)}
-                    regenerating={regeneratingId === item.id}
+                    platform={item.platform}
+                    generationId={item.id}
+                    regeneratingMode={
+                      regeneratingId === item.id ? regeneratingMode : null
+                    }
+                    onRegenerate={(mode) => regenerate(item, mode)}
+                    onSoftened={(next) =>
+                      setItems((prev) =>
+                        prev.map((row) =>
+                          row.id === item.id ? { ...row, result: next } : row,
+                        ),
+                      )
+                    }
                   />
                 </div>
               )}

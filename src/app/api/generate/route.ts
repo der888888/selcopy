@@ -5,11 +5,21 @@ import {
   consumeAndUpdateGeneration,
   getCurrentProfile,
   getGenerationById,
+  saveGenerationResult,
 } from "@/lib/auth";
 import { generateCopy } from "@/lib/generate";
 import { decideConsume } from "@/lib/credits";
-import { applyComplianceSoftening, attachCompliance } from "@/lib/compliance";
-import type { GenerateResult, GenerationRow } from "@/lib/types";
+import { applyComplianceSoftening } from "@/lib/compliance";
+import { finalizeForPlatform } from "@/lib/format";
+import type { GenerateMode, GenerateResult, GenerationRow } from "@/lib/types";
+
+const modeSchema = z.enum([
+  "full",
+  "ads",
+  "titles",
+  "keywords",
+  "ads_keywords",
+]);
 
 const schema = z.object({
   platform: z.enum(["smartstore", "coupang"]),
@@ -19,15 +29,66 @@ const schema = z.object({
   sellingPoints: z.string().max(1000).optional().default(""),
   imageNote: z.string().max(500).optional(),
   brandTone: z.string().max(300).optional(),
-  mode: z.enum(["full", "ads_keywords"]).optional().default("full"),
+  mode: modeSchema.optional().default("full"),
   generationId: z.string().optional(),
+  action: z.enum(["generate", "soften"]).optional().default("generate"),
+  result: z.any().optional(),
 });
+
+function mergePartial(
+  existing: GenerateResult,
+  partial: GenerateResult,
+  mode: GenerateMode,
+  limited: boolean,
+): GenerateResult {
+  const next: GenerateResult = {
+    ...existing,
+    watermarked: limited,
+    titleCandidates: existing.titleCandidates || [],
+    compliance: [],
+  };
+  if (mode === "ads" || mode === "ads_keywords") {
+    next.adCopies = partial.adCopies;
+  }
+  if (mode === "ads_keywords" || mode === "keywords") {
+    next.searchKeywords = partial.searchKeywords;
+  }
+  if (mode === "titles") {
+    next.titleCandidates = partial.titleCandidates;
+  }
+  return next;
+}
 
 export async function POST(request: Request) {
   try {
     const profile = await getCurrentProfile();
     if (!profile) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    }
+
+    const body = schema.parse(await request.json());
+
+    // 원클릭 순화 — 크레딧 차감 없음
+    if (body.action === "soften") {
+      if (!body.generationId || !body.result) {
+        return NextResponse.json(
+          { error: "순화할 결과가 필요합니다." },
+          { status: 400 },
+        );
+      }
+      const softened = finalizeForPlatform(
+        body.platform,
+        applyComplianceSoftening(body.result as GenerateResult),
+      );
+      await saveGenerationResult({
+        id: body.generationId,
+        result: softened,
+      });
+      return NextResponse.json({
+        result: softened,
+        generationId: body.generationId,
+        mode: "soften",
+      });
     }
 
     const kind = decideConsume(profile);
@@ -38,7 +99,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = schema.parse(await request.json());
     const limited = kind === "free";
     const input = {
       platform: body.platform,
@@ -50,7 +110,7 @@ export async function POST(request: Request) {
       brandTone: body.brandTone || profile.brand_tone || undefined,
     };
 
-    if (body.mode === "ads_keywords") {
+    if (body.mode !== "full") {
       if (!body.generationId) {
         return NextResponse.json(
           { error: "재생성할 이력 ID가 필요합니다." },
@@ -69,18 +129,12 @@ export async function POST(request: Request) {
 
       const partial = await generateCopy(input, {
         limited,
-        mode: "ads_keywords",
+        mode: body.mode,
       });
 
-      const merged: GenerateResult = applyComplianceSoftening(
-        attachCompliance({
-          ...existing.result,
-          adCopies: partial.adCopies,
-          searchKeywords: partial.searchKeywords,
-          watermarked: limited,
-          compliance: [],
-          titleCandidates: existing.result.titleCandidates || [],
-        }),
+      const merged = finalizeForPlatform(
+        body.platform,
+        mergePartial(existing.result, partial, body.mode, limited),
       );
 
       const saved = await consumeAndUpdateGeneration({
@@ -93,7 +147,7 @@ export async function POST(request: Request) {
         usage: saved.usage,
         generationId: saved.generation.id,
         consumed: kind,
-        mode: "ads_keywords",
+        mode: body.mode,
       });
     }
 

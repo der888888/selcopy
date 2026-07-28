@@ -5,7 +5,12 @@ import Link from "next/link";
 import { AppNav } from "@/components/site-header";
 import { ResultPanel } from "@/components/result-panel";
 import { PLATFORM_TEMPLATES } from "@/lib/platforms";
-import type { GenerateResult, Platform, UsageSnapshot } from "@/lib/types";
+import type {
+  GenerateMode,
+  GenerateResult,
+  Platform,
+  UsageSnapshot,
+} from "@/lib/types";
 
 export default function GeneratePage() {
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
@@ -20,7 +25,9 @@ export default function GeneratePage() {
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
+  const [regeneratingMode, setRegeneratingMode] = useState<GenerateMode | null>(
+    null,
+  );
   const [error, setError] = useState("");
 
   const tpl = PLATFORM_TEMPLATES[platform];
@@ -80,9 +87,9 @@ export default function GeneratePage() {
     }
   }
 
-  async function onRegenerateAds() {
+  async function onRegenerate(mode: Exclude<GenerateMode, "full">) {
     if (!generationId) return;
-    setRegenerating(true);
+    setRegeneratingMode(mode);
     setError("");
     try {
       const res = await fetch("/api/generate", {
@@ -96,7 +103,7 @@ export default function GeneratePage() {
           sellingPoints,
           imageNote,
           brandTone,
-          mode: "ads_keywords",
+          mode,
           generationId,
         }),
       });
@@ -107,7 +114,7 @@ export default function GeneratePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "오류");
     } finally {
-      setRegenerating(false);
+      setRegeneratingMode(null);
     }
   }
 
@@ -135,8 +142,8 @@ export default function GeneratePage() {
               <option value="coupang">쿠팡</option>
             </select>
             <p className="text-xs text-[var(--ink-soft)]">
-              {tpl.label} · 상품명 약 {tpl.titleMaxLen}자 · 광고 약 {tpl.adMaxLen}자 ·{" "}
-              {tpl.detailSections.slice(0, 3).join(" / ")}…
+              {tpl.label} · 상품명 {tpl.titleMaxLen}자 · 광고 {tpl.adMaxLen}자 ·
+              복붙용 HTML 자동 생성
             </p>
           </div>
           <div className="field">
@@ -213,8 +220,11 @@ export default function GeneratePage() {
             <ResultPanel
               result={result}
               productName={productName}
-              onRegenerateAds={generationId ? onRegenerateAds : undefined}
-              regenerating={regenerating}
+              platform={platform}
+              generationId={generationId}
+              regeneratingMode={regeneratingMode}
+              onRegenerate={generationId ? onRegenerate : undefined}
+              onSoftened={setResult}
             />
           )}
         </section>

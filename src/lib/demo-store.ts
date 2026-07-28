@@ -245,3 +245,23 @@ export async function demoUpdateGenerationPartial(params: {
     generation: store.generations[idx],
   };
 }
+
+export async function demoSaveGenerationResult(params: {
+  token: string;
+  id: string;
+  result: GenerateResult;
+}) {
+  const store = await readStore();
+  const userId = store.sessions[params.token];
+  if (!userId) throw new Error("로그인이 필요합니다.");
+  const idx = store.generations.findIndex(
+    (g) => g.id === params.id && g.user_id === userId,
+  );
+  if (idx < 0) throw new Error("이력을 찾을 수 없습니다.");
+  store.generations[idx] = {
+    ...store.generations[idx],
+    result: params.result,
+  };
+  await writeStore(store);
+  return { generation: store.generations[idx] };
+}

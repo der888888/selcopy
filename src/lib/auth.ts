@@ -202,3 +202,35 @@ export async function consumeAndUpdateGeneration(params: {
     generation,
   };
 }
+
+export async function saveGenerationResult(params: {
+  id: string;
+  result: GenerateResult;
+}) {
+  if (isDemoMode()) {
+    const { demoSaveGenerationResult } = await import("./demo-store");
+    return demoSaveGenerationResult({
+      token: (await getDemoToken())!,
+      id: params.id,
+      result: params.result,
+    });
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("로그인이 필요합니다.");
+
+  const admin = createAdminClient();
+  const { data: generation, error } = await admin
+    .from("generations")
+    .update({ result: params.result })
+    .eq("id", params.id)
+    .eq("user_id", user.id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return { generation };
+}

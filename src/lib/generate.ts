@@ -2,7 +2,8 @@ import OpenAI from "openai";
 import type { GenerateInput, GenerateMode, GenerateResult } from "./types";
 import { hasOpenAI } from "./env";
 import { getPlatformTemplate } from "./platforms";
-import { applyComplianceSoftening, attachCompliance } from "./compliance";
+import { attachCompliance } from "./compliance";
+import { finalizeForPlatform } from "./format";
 
 function counts(limited: boolean) {
   return limited
@@ -20,8 +21,8 @@ function buildFullPrompt(input: GenerateInput, limited: boolean) {
   return `
 당신은 한국 이커머스 ${tpl.label} 전용 카피라이터입니다.
 플랫폼 규칙:
-- 상품명 최대 약 ${tpl.titleMaxLen}자
-- 광고 문구 최대 약 ${tpl.adMaxLen}자
+- 상품명 최대 ${tpl.titleMaxLen}자 (초과 금지)
+- 광고 문구 최대 ${tpl.adMaxLen}자 (초과 금지)
 - 상세 섹션: ${tpl.detailSections.join(" / ")}
 - 톤: ${tpl.toneHints.join("; ")}
 - 추가: ${tpl.extraRules.join("; ")}
@@ -39,7 +40,6 @@ ${limitNote}
 반드시 아래 JSON만 출력. 코드블록 금지.
 {
   "detailMarkdown": "마크다운 상세",
-  "detailHtml": "간단 HTML 상세",
   "titleCandidates": ["상품명 후보 ${c.titles}개"],
   "adCopies": ["광고문구 ${c.ads}개"],
   "optionNames": ["옵션명 ${c.options}개"],
@@ -48,22 +48,38 @@ ${limitNote}
 `.trim();
 }
 
-function buildPartialPrompt(input: GenerateInput, limited: boolean) {
+function buildPartialPrompt(
+  input: GenerateInput,
+  limited: boolean,
+  mode: Exclude<GenerateMode, "full">,
+) {
   const tpl = getPlatformTemplate(input.platform);
   const c = counts(limited);
-  return `
-${tpl.label}용으로 광고 문구와 검색 키워드만 다시 작성하세요.
+  const base = `
+${tpl.label}용 부분 재생성.
 상품명: ${input.productName}
 카테고리: ${input.category || "미지정"}
 핵심 키워드: ${input.keywords || "없음"}
 판매 포인트: ${input.sellingPoints || "없음"}
 브랜드톤: ${input.brandTone || "신뢰감 있고 구체적"}
-광고 최대 약 ${tpl.adMaxLen}자, ${c.ads}개.
-검색 키워드 ${c.keywords}개.
 과장·의료 단정 표현 금지.
-JSON만 출력:
-{ "adCopies": [], "searchKeywords": [] }
 `.trim();
+
+  if (mode === "ads" || mode === "ads_keywords") {
+    return `${base}
+광고 최대 ${tpl.adMaxLen}자, ${c.ads}개.
+${mode === "ads_keywords" ? `검색 키워드 ${c.keywords}개도 함께.` : "검색 키워드는 출력하지 마세요."}
+JSON만:
+{ "adCopies": []${mode === "ads_keywords" ? ', "searchKeywords": []' : ""} }`;
+  }
+  if (mode === "titles") {
+    return `${base}
+상품명 후보 ${c.titles}개, 각 ${tpl.titleMaxLen}자 이내.
+JSON만: { "titleCandidates": [] }`;
+  }
+  return `${base}
+검색 키워드 ${c.keywords}개.
+JSON만: { "searchKeywords": [] }`;
 }
 
 function mockFull(input: GenerateInput, limited: boolean): GenerateResult {
@@ -72,17 +88,14 @@ function mockFull(input: GenerateInput, limited: boolean): GenerateResult {
   const point = input.sellingPoints?.split(/[,\n]/)[0]?.trim() || "핵심 장점";
 
   const titleCandidates = [
-    `${input.productName} ${point}`.slice(0, tpl.titleMaxLen),
-    `${input.category || ""} ${input.productName}`.trim().slice(0, tpl.titleMaxLen),
-    `${input.productName} 추천`.slice(0, tpl.titleMaxLen),
-    `실용 ${input.productName}`.slice(0, tpl.titleMaxLen),
-    `${input.keywords?.split(/[,\s]/)[0] || ""} ${input.productName}`.trim().slice(0, tpl.titleMaxLen),
-    `데일리 ${input.productName}`.slice(0, tpl.titleMaxLen),
-    `선물용 ${input.productName}`.slice(0, tpl.titleMaxLen),
-    `${input.productName} ${input.platform === "coupang" ? "빠른배송" : "검색최적화"}`.slice(
-      0,
-      tpl.titleMaxLen,
-    ),
+    `${input.productName} ${point}`,
+    `${input.category || ""} ${input.productName}`.trim(),
+    `${input.productName} 추천`,
+    `실용 ${input.productName}`,
+    `${input.keywords?.split(/[,\s]/)[0] || ""} ${input.productName}`.trim(),
+    `데일리 ${input.productName}`,
+    `선물용 ${input.productName}`,
+    `${input.productName} ${input.platform === "coupang" ? "빠른배송" : "검색최적화"}`,
   ]
     .filter(Boolean)
     .slice(0, c.titles);
@@ -95,14 +108,15 @@ function mockFull(input: GenerateInput, limited: boolean): GenerateResult {
     `${point} 살린 ${input.productName}`,
     `재구매 많은 ${input.productName}`,
     `오늘 주목! ${input.productName}`,
-    `호평 이어지는 ${input.productName}`,
+    `리뷰 호평 ${input.productName}`,
     `선물용으로도 좋은 ${input.productName}`,
-    `검색에도 잘 걸리는 ${input.productName}`,
+    `검색 1위 노리는 ${input.productName}`,
   ].slice(0, c.ads);
 
   const sections = tpl.detailSections
     .map((s) => {
-      if (s.includes("한줄")) return `## ${s}\n${input.sellingPoints || "일상에 바로 쓰는 실용 아이템"}`;
+      if (s.includes("한줄"))
+        return `## ${s}\n${input.sellingPoints || "일상에 바로 쓰는 실용 아이템"}`;
       if (s.includes("추천") || s.includes("왜"))
         return `## ${s}\n- ${input.category || "관련"} 상품을 찾는 분\n- ${input.keywords || "가성비"}를 보는 분`;
       if (s.includes("포인트"))
@@ -126,16 +140,9 @@ function mockFull(input: GenerateInput, limited: boolean): GenerateResult {
     limited ? `\n---\n*셀카피 무료 체험 초안*` : "",
   ].join("\n");
 
-  const detailHtml = detailMarkdown
-    .replace(/^# (.*)$/gm, "<h1>$1</h1>")
-    .replace(/^## (.*)$/gm, "<h2>$1</h2>")
-    .replace(/^> (.*)$/gm, "<p><em>$1</em></p>")
-    .replace(/^- (.*)$/gm, "<li>$1</li>")
-    .replace(/\n/g, "<br/>");
-
-  return attachCompliance({
+  return {
     detailMarkdown,
-    detailHtml,
+    detailHtml: "",
     titleCandidates,
     adCopies: ads,
     optionNames: [
@@ -166,14 +173,19 @@ function mockFull(input: GenerateInput, limited: boolean): GenerateResult {
       .slice(0, c.keywords),
     compliance: [],
     watermarked: limited,
-  });
+  };
 }
 
-function mockPartial(input: GenerateInput, limited: boolean) {
-  const full = mockFull(input, limited);
+function emptyPartial(): GenerateResult {
   return {
-    adCopies: full.adCopies,
-    searchKeywords: full.searchKeywords,
+    detailMarkdown: "",
+    detailHtml: "",
+    titleCandidates: [],
+    adCopies: [],
+    optionNames: [],
+    searchKeywords: [],
+    compliance: [],
+    watermarked: false,
   };
 }
 
@@ -185,14 +197,25 @@ export async function generateCopy(
   const mode = options?.mode ?? "full";
   const c = counts(limited);
 
+  const wrap = (result: GenerateResult) =>
+    finalizeForPlatform(input.platform, attachCompliance(result));
+
   if (!hasOpenAI()) {
-    const base = mockFull(input, limited);
-    return applyComplianceSoftening(base);
+    const full = mockFull(input, limited);
+    if (mode === "full") return wrap(full);
+    const partial = emptyPartial();
+    if (mode === "ads" || mode === "ads_keywords") {
+      partial.adCopies = full.adCopies;
+      if (mode === "ads_keywords") partial.searchKeywords = full.searchKeywords;
+    }
+    if (mode === "titles") partial.titleCandidates = full.titleCandidates;
+    if (mode === "keywords") partial.searchKeywords = full.searchKeywords;
+    return wrap(partial);
   }
 
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  if (mode === "ads_keywords") {
+  if (mode !== "full") {
     const completion = await client.chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4o-mini",
       temperature: 0.8,
@@ -200,29 +223,31 @@ export async function generateCopy(
       messages: [
         {
           role: "system",
-          content: "한국어 이커머스 광고/키워드 전문가. JSON만 반환.",
+          content: "한국어 이커머스 카피 전문가. JSON만 반환.",
         },
-        { role: "user", content: buildPartialPrompt(input, limited) },
+        { role: "user", content: buildPartialPrompt(input, limited, mode) },
       ],
     });
     const parsed = JSON.parse(
       completion.choices[0]?.message?.content ?? "{}",
     ) as Partial<GenerateResult>;
-    const mock = mockPartial(input, limited);
-    // partial caller merges into existing result
-    return attachCompliance({
-      detailMarkdown: "",
-      detailHtml: "",
-      titleCandidates: [],
-      optionNames: [],
-      adCopies: (parsed.adCopies || mock.adCopies).slice(0, c.ads),
-      searchKeywords: (parsed.searchKeywords || mock.searchKeywords).slice(
-        0,
-        c.keywords,
-      ),
-      compliance: [],
-      watermarked: limited,
-    });
+    const full = mockFull(input, limited);
+    const partial = emptyPartial();
+    partial.watermarked = limited;
+    if (mode === "ads" || mode === "ads_keywords") {
+      partial.adCopies = (parsed.adCopies || full.adCopies).slice(0, c.ads);
+    }
+    if (mode === "ads_keywords" || mode === "keywords") {
+      partial.searchKeywords = (
+        parsed.searchKeywords || full.searchKeywords
+      ).slice(0, c.keywords);
+    }
+    if (mode === "titles") {
+      partial.titleCandidates = (
+        parsed.titleCandidates || full.titleCandidates
+      ).slice(0, c.titles);
+    }
+    return wrap(partial);
   }
 
   const completion = await client.chat.completions.create({
@@ -243,9 +268,9 @@ export async function generateCopy(
   ) as Partial<GenerateResult>;
   const fallback = mockFull(input, limited);
 
-  const result: GenerateResult = {
+  return wrap({
     detailMarkdown: parsed.detailMarkdown || fallback.detailMarkdown,
-    detailHtml: parsed.detailHtml || fallback.detailHtml,
+    detailHtml: "",
     titleCandidates: (parsed.titleCandidates || fallback.titleCandidates).slice(
       0,
       c.titles,
@@ -258,7 +283,5 @@ export async function generateCopy(
     ),
     compliance: [],
     watermarked: limited,
-  };
-
-  return applyComplianceSoftening(attachCompliance(result));
+  });
 }
