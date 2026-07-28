@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import Script from "next/script";
 import { AppNav } from "@/components/site-header";
-import { PRODUCTS, PLANS } from "@/lib/plans";
+import { PRODUCTS, PLANS, formatWon } from "@/lib/plans";
 import type { UsageSnapshot } from "@/lib/types";
 
 declare global {
@@ -38,6 +39,15 @@ export default function BillingPage() {
     refresh();
   }, []);
 
+  const breakEven = useMemo(() => {
+    if (!usage) return null;
+    const creditPer = PRODUCTS.credits_30.perUse;
+    const starterPer = PRODUCTS.plan_starter.perUse;
+    // 크레딧으로 N회 하면 스타터보다 비싸지는 지점
+    const n = Math.ceil(PRODUCTS.plan_starter.amount / creditPer);
+    return { creditPer, starterPer, n, used: usage.monthlyUsed };
+  }, [usage]);
+
   async function buy(productCode: keyof typeof PRODUCTS) {
     setLoading(productCode);
     setMessage("");
@@ -50,7 +60,6 @@ export default function BillingPage() {
       const order = await prepare.json();
       if (!prepare.ok) throw new Error(order.error || "주문 생성 실패");
 
-      // 토스 키가 없으면 데모 즉시 결제
       if (!order.tossReady || !order.clientKey || !window.TossPayments) {
         const confirm = await fetch("/api/payments", {
           method: "PUT",
@@ -96,7 +105,7 @@ export default function BillingPage() {
       <section className="container py-8">
         <h1 className="display text-3xl font-extrabold">결제 · 한도</h1>
         <p className="mt-2 text-[var(--ink-soft)]">
-          토스 키가 없으면 로컬 데모 결제로 즉시 적립됩니다.
+          크레딧은 맛보기, 대량·재생성은 구독이 더 저렴합니다.
         </p>
 
         {usage && (
@@ -107,14 +116,62 @@ export default function BillingPage() {
               label="월 사용"
               value={`${usage.monthlyUsed}/${usage.monthlyQuota || 0}`}
             />
-            <Stat label="오늘 무료" value={String(usage.freeRemainingToday)} />
+            <Stat
+              label="구독 기능"
+              value={usage.canBulk ? "대량·재생성 ON" : "잠김"}
+            />
+          </div>
+        )}
+
+        {breakEven && (
+          <div className="card mt-4 border-[color-mix(in_srgb,var(--accent)_35%,var(--line))] p-5">
+            <h2 className="display text-xl font-bold">회당 단가 비교</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3 text-sm">
+              <div>
+                <p className="text-[var(--ink-soft)]">크레딧</p>
+                <p className="text-2xl font-extrabold">
+                  {formatWon(breakEven.creditPer)}
+                  <span className="text-sm font-semibold">/회</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[var(--ink-soft)]">스타터</p>
+                <p className="text-2xl font-extrabold text-[var(--accent)]">
+                  {formatWon(breakEven.starterPer)}
+                  <span className="text-sm font-semibold">/회</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[var(--ink-soft)]">프로</p>
+                <p className="text-2xl font-extrabold">
+                  {formatWon(PRODUCTS.plan_pro.perUse)}
+                  <span className="text-sm font-semibold">/회</span>
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-sm text-[var(--ink-soft)]">
+              크레딧으로 약 <strong>{breakEven.n}회</strong> 쓰면 스타터 구독이 더
+              이득입니다.
+              {breakEven.used > 0 && (
+                <>
+                  {" "}
+                  이번 달 이미 <strong>{breakEven.used}회</strong> 사용.
+                </>
+              )}
+            </p>
+            {!usage?.canBulk && (
+              <p className="mt-2 text-sm font-semibold text-[var(--accent)]">
+                CSV 대량·부분 재생성은 스타터 이상에서만 열립니다.
+              </p>
+            )}
           </div>
         )}
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           <ProductCard
             title={PRODUCTS.credits_30.name}
-            price={`${PRODUCTS.credits_30.amount.toLocaleString()}원`}
+            price={formatWon(PRODUCTS.credits_30.amount)}
+            perUse={`회당 ${formatWon(PRODUCTS.credits_30.perUse)}`}
             desc={PRODUCTS.credits_30.description}
             loading={loading === "credits_30"}
             onBuy={() => buy("credits_30")}
@@ -122,17 +179,20 @@ export default function BillingPage() {
           <ProductCard
             title={PLANS.starter.name}
             price={PLANS.starter.priceLabel}
-            desc="30일 이용 · 월 50회"
+            perUse={`회당 약 ${formatWon(PRODUCTS.plan_starter.perUse)}`}
+            desc={PRODUCTS.plan_starter.description}
             loading={loading === "plan_starter"}
             onBuy={() => buy("plan_starter")}
+            highlight
+            badge="추천"
           />
           <ProductCard
             title={PLANS.pro.name}
             price={PLANS.pro.priceLabel}
-            desc="30일 이용 · 월 200회 · HTML/브랜드톤"
+            perUse={`회당 약 ${formatWon(PRODUCTS.plan_pro.perUse)}`}
+            desc={PRODUCTS.plan_pro.description}
             loading={loading === "plan_pro"}
             onBuy={() => buy("plan_pro")}
-            highlight
           />
         </div>
 
@@ -141,6 +201,11 @@ export default function BillingPage() {
             {message}
           </p>
         )}
+
+        <p className="mt-6 text-sm text-[var(--ink-soft)]">
+          요금 상세는 <Link href="/pricing" className="font-bold text-[var(--accent)]">요금제</Link>에서
+          볼 수 있습니다.
+        </p>
       </section>
     </main>
   );
@@ -158,22 +223,28 @@ function Stat({ label, value }: { label: string; value: string }) {
 function ProductCard(props: {
   title: string;
   price: string;
+  perUse: string;
   desc: string;
   loading: boolean;
   onBuy: () => void;
   highlight?: boolean;
+  badge?: string;
 }) {
   return (
     <div
-      className="card p-5"
+      className="card relative p-5"
       style={
         props.highlight
           ? { borderColor: "color-mix(in srgb, var(--accent) 45%, var(--line))" }
           : undefined
       }
     >
+      {props.badge && (
+        <span className="badge absolute right-4 top-4">{props.badge}</span>
+      )}
       <h2 className="display text-2xl font-bold">{props.title}</h2>
       <p className="mt-2 text-3xl font-extrabold">{props.price}</p>
+      <p className="mt-1 text-sm font-bold text-[var(--accent)]">{props.perUse}</p>
       <p className="mt-2 text-sm text-[var(--ink-soft)]">{props.desc}</p>
       <button
         className={`btn mt-5 w-full ${props.highlight ? "btn-accent" : "btn-primary"}`}

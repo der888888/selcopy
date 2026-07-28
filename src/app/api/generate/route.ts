@@ -11,6 +11,7 @@ import { generateCopy } from "@/lib/generate";
 import { decideConsume } from "@/lib/credits";
 import { applyComplianceSoftening } from "@/lib/compliance";
 import { finalizeForPlatform } from "@/lib/format";
+import { isPaidPlan } from "@/lib/plans";
 import type { GenerateMode, GenerateResult, GenerationRow } from "@/lib/types";
 
 const modeSchema = z.enum([
@@ -33,6 +34,7 @@ const schema = z.object({
   generationId: z.string().optional(),
   action: z.enum(["generate", "soften"]).optional().default("generate"),
   result: z.any().optional(),
+  fromBulk: z.boolean().optional().default(false),
 });
 
 function mergePartial(
@@ -99,6 +101,16 @@ export async function POST(request: Request) {
       );
     }
 
+    if (body.fromBulk && !isPaidPlan(profile.plan)) {
+      return NextResponse.json(
+        {
+          error: "CSV 대량 생성은 스타터 이상 구독 기능입니다.",
+          code: "SUBSCRIPTION_REQUIRED",
+        },
+        { status: 403 },
+      );
+    }
+
     const limited = kind === "free";
     const input = {
       platform: body.platform,
@@ -111,6 +123,16 @@ export async function POST(request: Request) {
     };
 
     if (body.mode !== "full") {
+      if (!isPaidPlan(profile.plan)) {
+        return NextResponse.json(
+          {
+            error:
+              "상품명/광고/키워드만 재생성은 스타터 이상 구독 기능입니다.",
+            code: "SUBSCRIPTION_REQUIRED",
+          },
+          { status: 403 },
+        );
+      }
       if (!body.generationId) {
         return NextResponse.json(
           { error: "재생성할 이력 ID가 필요합니다." },

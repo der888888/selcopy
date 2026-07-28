@@ -122,10 +122,16 @@ export default function BulkPage() {
           body: JSON.stringify({
             ...item.row,
             mode: "full",
+            fromBulk: true,
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "생성 실패");
+        if (!res.ok) {
+          if (data.code === "SUBSCRIPTION_REQUIRED") {
+            throw new Error(data.error);
+          }
+          throw new Error(data.error || "생성 실패");
+        }
 
         working = working.map((r, idx) =>
           idx === i
@@ -161,9 +167,11 @@ export default function BulkPage() {
         setRows(working);
         if (
           err instanceof Error &&
-          (err.message.includes("한도") || err.message.includes("QUOTA"))
+          (err.message.includes("한도") ||
+            err.message.includes("QUOTA") ||
+            err.message.includes("구독"))
         ) {
-          setError("한도 부족으로 중단되었습니다.");
+          setError(err.message);
           break;
         }
       }
@@ -257,9 +265,23 @@ export default function BulkPage() {
         <h1 className="display text-3xl font-extrabold">대량 생성 (CSV)</h1>
         <p className="mt-2 max-w-2xl text-[var(--ink-soft)]">
           행마다 진행률이 보이고, 실패한 행만 다시 돌릴 수 있습니다. 최대 100행.
+          스타터 이상 구독 전용입니다.
         </p>
 
-        <div className="card mt-6 grid gap-4 p-6">
+        {usage && !usage.canBulk && (
+          <div className="card mt-6 border-[color-mix(in_srgb,var(--accent)_40%,var(--line))] p-6">
+            <h2 className="display text-2xl font-bold">구독하면 열리는 기능</h2>
+            <p className="mt-2 text-sm text-[var(--ink-soft)]">
+              크레딧만으로는 단건 생성만 가능합니다. CSV 대량은 스타터(회당 약 398원)부터
+              쓸 수 있고, 크레딧(회당 약 497원)보다 저렴합니다.
+            </p>
+            <a href="/billing" className="btn btn-accent mt-4 inline-flex">
+              스타터 구독하기
+            </a>
+          </div>
+        )}
+
+        <div className={`card mt-6 grid gap-4 p-6 ${usage && !usage.canBulk ? "opacity-50 pointer-events-none" : ""}`}>
           <div className="flex flex-wrap gap-2">
             <button className="btn btn-ghost !py-2 !px-4 text-sm" onClick={downloadTemplate}>
               템플릿 CSV 받기
@@ -336,7 +358,7 @@ export default function BulkPage() {
           <div className="flex flex-wrap gap-2">
             <button
               className="btn btn-accent"
-              disabled={running || !usage?.canGenerate}
+              disabled={running || !usage?.canBulk || !usage?.canGenerate}
               onClick={onRun}
             >
               {running ? "생성 중…" : "대량 생성 시작"}
@@ -344,7 +366,7 @@ export default function BulkPage() {
             {progress.failed > 0 && (
               <button
                 className="btn btn-primary"
-                disabled={running || !usage?.canGenerate}
+                disabled={running || !usage?.canBulk || !usage?.canGenerate}
                 onClick={onRetryFailed}
               >
                 실패 {progress.failed}건만 다시

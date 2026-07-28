@@ -1,4 +1,4 @@
-import { PLANS, planMonthlyQuota, type PlanId } from "./plans";
+import { PLANS, PRODUCTS, isPaidPlan, planMonthlyQuota, type PlanId } from "./plans";
 import type { Profile, UsageSnapshot } from "./types";
 
 function todayKST(): string {
@@ -49,6 +49,7 @@ export function getUsageSnapshot(profile: Profile): UsageSnapshot {
   const hasPlanQuota = monthlyQuota > 0 && p.monthly_used < monthlyQuota;
   const hasCredits = p.credits > 0;
   const hasFree = p.plan === "free" && freeRemainingToday > 0;
+  const paid = isPaidPlan(p.plan);
 
   return {
     plan: p.plan,
@@ -57,6 +58,8 @@ export function getUsageSnapshot(profile: Profile): UsageSnapshot {
     monthlyQuota,
     freeRemainingToday,
     canGenerate: hasPlanQuota || hasCredits || hasFree,
+    canBulk: paid,
+    canPartialRegenerate: paid,
     brandTone: p.brand_tone,
     planExpiresAt: p.plan_expires_at,
   };
@@ -101,7 +104,7 @@ export function applyPurchase(
   expires.setDate(expires.getDate() + 30);
 
   if (productCode === "credits_30") {
-    return { credits: profile.credits + 30 };
+    return { credits: profile.credits + PRODUCTS.credits_30.units };
   }
   if (productCode === "plan_starter") {
     return {

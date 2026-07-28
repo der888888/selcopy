@@ -71,6 +71,8 @@ export type UsageSnapshot = {
   monthlyQuota: number;
   freeRemainingToday: number;
   canGenerate: boolean;
+  canBulk: boolean;
+  canPartialRegenerate: boolean;
   brandTone: string | null;
   planExpiresAt: string | null;
 };

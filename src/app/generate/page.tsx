@@ -108,7 +108,12 @@ export default function GeneratePage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "재생성 실패");
+      if (!res.ok) {
+        if (data.code === "SUBSCRIPTION_REQUIRED") {
+          throw new Error(data.error);
+        }
+        throw new Error(data.error || "재생성 실패");
+      }
       setResult(data.result);
       setUsage(data.usage);
     } catch (err) {
@@ -223,9 +228,22 @@ export default function GeneratePage() {
               platform={platform}
               generationId={generationId}
               regeneratingMode={regeneratingMode}
-              onRegenerate={generationId ? onRegenerate : undefined}
+              onRegenerate={
+                generationId && usage?.canPartialRegenerate
+                  ? onRegenerate
+                  : undefined
+              }
               onSoftened={setResult}
             />
+          )}
+          {result && usage && !usage.canPartialRegenerate && (
+            <p className="mt-4 rounded-xl border border-[var(--line)] bg-[#fff8ef] px-4 py-3 text-sm">
+              상품명/광고/키워드만 다시 뽑기는{" "}
+              <Link href="/billing" className="font-bold text-[var(--accent)]">
+                스타터 구독
+              </Link>
+              부터 가능합니다. (크레딧보다 회당 단가↓)
+            </p>
           )}
         </section>
       </div>

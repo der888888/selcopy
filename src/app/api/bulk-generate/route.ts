@@ -3,6 +3,7 @@ import { z } from "zod";
 import { consumeAndSaveGeneration, getCurrentProfile } from "@/lib/auth";
 import { generateCopy } from "@/lib/generate";
 import { decideConsume } from "@/lib/credits";
+import { isPaidPlan } from "@/lib/plans";
 import type { Platform } from "@/lib/types";
 
 const rowSchema = z.object({
@@ -27,6 +28,15 @@ export async function POST(request: Request) {
     const profile = await getCurrentProfile();
     if (!profile) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    }
+    if (!isPaidPlan(profile.plan)) {
+      return NextResponse.json(
+        {
+          error: "CSV 대량 생성은 스타터 이상 구독 기능입니다.",
+          code: "SUBSCRIPTION_REQUIRED",
+        },
+        { status: 403 },
+      );
     }
 
     const { rows } = bodySchema.parse(await request.json());

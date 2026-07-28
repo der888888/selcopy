@@ -115,26 +115,47 @@ export default function HistoryPage() {
                 </button>
                 <button
                   className="btn btn-ghost !px-3 !py-1.5 text-sm"
-                  disabled={regeneratingId === item.id || !usage?.canGenerate}
+                  disabled={
+                    regeneratingId === item.id ||
+                    !usage?.canGenerate ||
+                    !usage?.canPartialRegenerate
+                  }
                   onClick={() => regenerate(item, "titles")}
                 >
                   상품명만
                 </button>
                 <button
                   className="btn btn-ghost !px-3 !py-1.5 text-sm"
-                  disabled={regeneratingId === item.id || !usage?.canGenerate}
+                  disabled={
+                    regeneratingId === item.id ||
+                    !usage?.canGenerate ||
+                    !usage?.canPartialRegenerate
+                  }
                   onClick={() => regenerate(item, "ads")}
                 >
                   광고만
                 </button>
                 <button
                   className="btn btn-accent !px-3 !py-1.5 text-sm"
-                  disabled={regeneratingId === item.id || !usage?.canGenerate}
+                  disabled={
+                    regeneratingId === item.id ||
+                    !usage?.canGenerate ||
+                    !usage?.canPartialRegenerate
+                  }
                   onClick={() => regenerate(item, "keywords")}
                 >
                   키워드만
                 </button>
               </div>
+              {usage && !usage.canPartialRegenerate && (
+                <p className="mt-2 text-xs text-[var(--ink-soft)]">
+                  부분 재생성은{" "}
+                  <a href="/billing" className="font-bold text-[var(--accent)]">
+                    스타터 구독
+                  </a>
+                  부터 가능합니다.
+                </p>
+              )}
               {openId === item.id && item.result && (
                 <div className="mt-4 border-t border-[var(--line)] pt-4">
                   <ResultPanel
@@ -149,7 +170,11 @@ export default function HistoryPage() {
                     regeneratingMode={
                       regeneratingId === item.id ? regeneratingMode : null
                     }
-                    onRegenerate={(mode) => regenerate(item, mode)}
+                    onRegenerate={
+                      usage?.canPartialRegenerate
+                        ? (mode) => regenerate(item, mode)
+                        : undefined
+                    }
                     onSoftened={(next) =>
                       setItems((prev) =>
                         prev.map((row) =>

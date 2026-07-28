@@ -100,7 +100,7 @@ export default function HomePage() {
           ))}
         </div>
         <p className="mt-4 text-sm text-[var(--ink-soft)]">
-          크레딧 팩 9,900원 / 30회 — 구독 없이 바로 구매 가능
+          크레딧 팩 14,900원 / 30회(회당 ~497원) · 스타터는 회당 ~398원 + 대량/재생성
         </p>
       </section>
 
