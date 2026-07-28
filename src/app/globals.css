@@ -12,8 +12,8 @@
   --danger: #b42318;
   --shadow: 0 18px 50px rgba(16, 32, 51, 0.08);
   --radius: 18px;
-  --font-display: "Syne", "Pretendard", sans-serif;
-  --font-body: "Pretendard", "Noto Sans KR", sans-serif;
+  --font-display: var(--font-plex), "IBM Plex Sans KR", sans-serif;
+  --font-body: var(--font-plex), "IBM Plex Sans KR", sans-serif;
 }
 
 @theme inline {
@@ -68,7 +68,9 @@ select {
 
 .display {
   font-family: var(--font-display);
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  word-break: keep-all;
 }
 
 .btn {

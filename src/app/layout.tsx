@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
-import { Syne } from "next/font/google";
+import { IBM_Plex_Sans_KR } from "next/font/google";
 import "./globals.css";
 
-const syne = Syne({
+const plex = IBM_Plex_Sans_KR({
   subsets: ["latin"],
-  variable: "--font-syne",
-  weight: ["500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -20,21 +20,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const bodyStyle = {
-    ["--font-display"]: "var(--font-syne), Pretendard, sans-serif",
-  } as CSSProperties;
-
   return (
-    <html lang="ko" className={`${syne.variable} h-full`}>
-      <head>
-        <link
-          rel="stylesheet"
-          as="style"
-          crossOrigin="anonymous"
-          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css"
-        />
-      </head>
-      <body className="min-h-full antialiased" style={bodyStyle}>
+    <html lang="ko" className={`${plex.variable} h-full`}>
+      <body className={`${plex.className} min-h-full antialiased`}>
         {children}
       </body>
     </html>
