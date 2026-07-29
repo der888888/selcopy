@@ -10,6 +10,9 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
       <nav className="flex items-center gap-2 text-sm font-semibold text-[var(--ink-soft)]">
         {!compact && (
           <>
+            <Link href="/guides" className="px-3 py-2 hover:text-[var(--ink)]">
+              가이드
+            </Link>
             <Link href="/pricing" className="px-3 py-2 hover:text-[var(--ink)]">
               요금제
             </Link>

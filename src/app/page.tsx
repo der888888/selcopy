@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { LandingPreview } from "@/components/landing-preview";
+import { GUIDES } from "@/lib/guides";
 import { PLANS } from "@/lib/plans";
 
 export default function HomePage() {
@@ -75,6 +76,34 @@ export default function HomePage() {
               <h3 className="display text-xl font-bold">{title}</h3>
               <p className="mt-2 text-sm text-[var(--ink-soft)]">{desc}</p>
             </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="container py-16">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h2 className="display text-3xl font-bold md:text-4xl">셀러 가이드</h2>
+            <p className="mt-3 max-w-2xl text-[var(--ink-soft)]">
+              검색으로 들어오는 실무 글. 상세·상품명·광고·금지어·CSV 일괄.
+            </p>
+          </div>
+          <Link href="/guides" className="text-sm font-bold text-[var(--accent)]">
+            전체 보기 →
+          </Link>
+        </div>
+        <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {GUIDES.slice(0, 3).map((guide) => (
+            <Link
+              key={guide.slug}
+              href={`/guides/${guide.slug}`}
+              className="rounded-[18px] border border-[var(--line)] bg-white/70 p-5 transition hover:-translate-y-0.5"
+            >
+              <p className="text-xs font-bold text-[var(--accent)]">{guide.keyword}</p>
+              <h3 className="display mt-2 text-lg font-bold leading-snug">
+                {guide.title}
+              </h3>
+            </Link>
           ))}
         </div>
       </section>
