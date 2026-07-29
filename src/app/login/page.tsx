@@ -4,25 +4,51 @@ import { useState } from "react";
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 
+function formatApiError(error: unknown, status: number) {
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object" && "message" in error) {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === "string" && msg.trim()) return msg;
+  }
+  return `요청에 실패했습니다 (${status}). 잠시 후 다시 시도해 주세요.`;
+}
+
 export default function LoginPage() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("seller@demo.local");
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setInfo("");
     try {
       const res = await fetch("/api/auth/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, mode }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "로그인 실패");
+      let data: { error?: unknown; needsEmailConfirm?: boolean; ok?: boolean } =
+        {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`서버 응답을 읽을 수 없습니다 (${res.status})`);
+      }
+      if (!res.ok) {
+        throw new Error(formatApiError(data.error, res.status));
+      }
+      if (mode === "signup" && data.needsEmailConfirm) {
+        setInfo(
+          "가입 메일을 보냈어요. 받은편지함(스팸함)에서 인증 링크를 눌러 주세요.",
+        );
+        setMode("signin");
+        return;
+      }
       window.location.href = "/generate";
     } catch (err) {
       setError(err instanceof Error ? err.message : "오류");
@@ -54,7 +80,7 @@ export default function LoginPage() {
             {mode === "signin" ? "로그인" : "회원가입"}
           </h1>
           <p className="mt-2 text-sm text-[var(--ink-soft)]">
-            데모 모드에서는 아무 이메일로 바로 시작할 수 있습니다.
+            이메일로 가입·로그인하거나 카카오를 사용할 수 있습니다.
           </p>
 
           <form onSubmit={onSubmit} className="mt-6 grid gap-4">
@@ -63,6 +89,8 @@ export default function LoginPage() {
               <input
                 type="email"
                 required
+                autoComplete="email"
+                placeholder="you@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -73,11 +101,14 @@ export default function LoginPage() {
                 type="password"
                 required
                 minLength={6}
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                placeholder="6자 이상"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
             {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
+            {info && <p className="text-sm text-[var(--accent)]">{info}</p>}
             <button className="btn btn-primary" disabled={loading}>
               {loading ? "처리 중…" : mode === "signin" ? "이메일로 계속" : "가입하기"}
             </button>
