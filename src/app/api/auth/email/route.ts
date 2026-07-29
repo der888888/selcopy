@@ -148,6 +148,13 @@ function serializeAuthError(error: AuthLikeError) {
 function mapAuthError(message: string) {
   const m = message.toLowerCase();
   if (
+    m.includes("authretryablefetcherror") ||
+    m.includes("retryable") ||
+    m.includes("fetcherror")
+  ) {
+    return "Supabase 인증 서버 오류(500). 대부분 Gmail SMTP 연결 실패입니다. Host=smtp.gmail.com, Port=465, Username=Gmail전체, Password=앱비밀번호(16자·공백없음)로 다시 저장하세요.";
+  }
+  if (
     m.includes("error sending") ||
     m.includes("confirmation email") ||
     m.includes("smtp") ||
